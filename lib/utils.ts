@@ -1,12 +1,13 @@
 export const MAF_HR = 153;
 export const RACE_DATE = new Date("2026-06-13T05:00:00+07:00");
 
-export function getRaceCountdown(): { days: number; hours: number } {
+export function getRaceCountdown(): { days: number; hours: number; minutes: number } {
   const now = new Date();
   const diff = RACE_DATE.getTime() - now.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  return { days, hours };
+  const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+  return { days, hours, minutes };
 }
 
 export function computeReadinessScore(h: {
@@ -47,27 +48,53 @@ export function formatDuration(seconds: number): string {
 }
 
 export function formatDistance(meters: number): string {
-  return `${(meters / 1000).toFixed(2)} km`;
+  return `${(meters / 1000).toFixed(2)}`;
 }
 
-export function activityEmoji(type: string): string {
+export function activityLabel(type: string): string {
   const t = (type || "").toLowerCase();
-  if (t.includes("run")) return "🏃";
-  if (t.includes("swim")) return "🏊";
-  if (t.includes("strength") || t.includes("gym") || t.includes("weight")) return "🏋️";
-  if (t.includes("cycl") || t.includes("bike")) return "🚴";
-  if (t.includes("yoga")) return "🧘";
-  return "⚡";
+  if (t.includes("run")) return "Running";
+  if (t.includes("swim")) return "Swimming";
+  if (t.includes("strength") || t.includes("gym") || t.includes("weight")) return "Strength";
+  if (t.includes("cycl") || t.includes("bike")) return "Cycling";
+  if (t.includes("yoga")) return "Yoga";
+  if (t.includes("walk")) return "Walking";
+  return type || "Activity";
 }
 
-export function readinessLabel(score: number): { label: string; color: string; ring: string } {
-  if (score >= 78) return { label: "SIAP", color: "text-emerald-400", ring: "#34d399" };
-  if (score >= 52) return { label: "SEDANG", color: "text-yellow-400", ring: "#facc15" };
-  return { label: "RENDAH", color: "text-red-400", ring: "#f87171" };
+export function readinessLabel(score: number): { label: string; tone: "good" | "warn" | "bad" } {
+  if (score >= 78) return { label: "Optimal", tone: "good" };
+  if (score >= 52) return { label: "Moderate", tone: "warn" };
+  return { label: "Low", tone: "bad" };
 }
 
-export function hrZoneColor(hr: number): string {
-  if (hr <= MAF_HR) return "text-emerald-400";
-  if (hr <= MAF_HR + 8) return "text-yellow-400";
-  return "text-red-400";
+export function toneColor(tone: "good" | "warn" | "bad" | "neutral"): string {
+  if (tone === "good") return "var(--green)";
+  if (tone === "warn") return "var(--yellow)";
+  if (tone === "bad") return "var(--red)";
+  return "var(--text-secondary)";
+}
+
+export function hrTone(hr: number): "good" | "warn" | "bad" {
+  if (hr <= MAF_HR) return "good";
+  if (hr <= MAF_HR + 8) return "warn";
+  return "bad";
+}
+
+export function sleepTone(score: number): "good" | "warn" | "bad" {
+  if (score >= 80) return "good";
+  if (score >= 65) return "warn";
+  return "bad";
+}
+
+export function batteryTone(v: number): "good" | "warn" | "bad" {
+  if (v >= 75) return "good";
+  if (v >= 45) return "warn";
+  return "bad";
+}
+
+export function rhrTone(v: number): "good" | "warn" | "bad" {
+  if (v <= 60) return "good";
+  if (v <= 68) return "warn";
+  return "bad";
 }
