@@ -1,0 +1,19 @@
+@import "tailwindcss";
+
+body {
+  background: #080810;
+  color: #f1f5f9;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+}
+
+.card-highlight {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+}
