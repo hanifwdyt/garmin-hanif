@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-const SECRET = process.env.MINION_SECRET || "punakawan-x-secret-2026";
+const SECRET = process.env.MINION_SECRET || "";
 
 function checkAuth(req: NextRequest): boolean {
   const provided = req.headers.get("x-minion-secret") || "";
