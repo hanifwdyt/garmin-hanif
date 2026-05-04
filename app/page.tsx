@@ -70,18 +70,18 @@ function Countdown() {
   }, []);
 
   return (
-    <div className="flex items-baseline gap-6 tabular">
+    <div className="flex items-baseline gap-4 sm:gap-6 tabular">
       <div>
-        <div className="text-5xl font-semibold tracking-tight" style={{ letterSpacing: "-0.04em" }}>{c.days}</div>
+        <div className="text-4xl sm:text-5xl font-semibold tracking-tight" style={{ letterSpacing: "-0.04em" }}>{c.days}</div>
         <div className="label mt-1">Days</div>
       </div>
-      <div className="text-3xl font-light" style={{ color: "var(--text-muted)" }}>·</div>
+      <div className="text-2xl sm:text-3xl font-light" style={{ color: "var(--text-muted)" }}>·</div>
       <div>
-        <div className="text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em", color: "var(--text-secondary)" }}>{String(c.hours).padStart(2, "0")}</div>
+        <div className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em", color: "var(--text-secondary)" }}>{String(c.hours).padStart(2, "0")}</div>
         <div className="label mt-1">Hours</div>
       </div>
       <div>
-        <div className="text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em", color: "var(--text-secondary)" }}>{String(c.minutes).padStart(2, "0")}</div>
+        <div className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em", color: "var(--text-secondary)" }}>{String(c.minutes).padStart(2, "0")}</div>
         <div className="label mt-1">Min</div>
       </div>
     </div>
@@ -124,36 +124,40 @@ function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
   const tone = isRun && a.avg_hr ? hrTone(a.avg_hr) : "neutral";
 
   return (
-    <div className={`grid grid-cols-12 gap-3 py-3.5 items-center ${!last ? "border-b" : ""}`}
+    <div className={`grid grid-cols-12 gap-2 sm:gap-3 py-3.5 items-center ${!last ? "border-b" : ""}`}
          style={{ borderColor: "var(--border)" }}>
-      <div className="col-span-5 min-w-0">
+      <div className="col-span-7 sm:col-span-5 min-w-0">
         <div className="text-sm font-medium truncate">{a.name || activityLabel(a.activity_type)}</div>
-        <div className="text-xs mt-0.5 tabular" style={{ color: "var(--text-tertiary)" }}>
+        <div className="text-xs mt-0.5 tabular truncate" style={{ color: "var(--text-tertiary)" }}>
+          <span className="sm:hidden">{activityLabel(a.activity_type)} · </span>
           {a.date}{a.start_time_local ? ` · ${a.start_time_local.slice(0,5)}` : ""}
         </div>
       </div>
-      <div className="col-span-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+      <div className="hidden sm:block sm:col-span-2 text-xs" style={{ color: "var(--text-secondary)" }}>
         {activityLabel(a.activity_type)}
       </div>
-      <div className="col-span-2 text-right tabular">
+      <div className="col-span-3 sm:col-span-2 text-right tabular">
         {a.distance_meters ? (
           <>
             <div className="text-sm font-medium">{formatDistance(a.distance_meters)}</div>
-            <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>km</div>
+            <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+              <span className="sm:hidden">{a.duration_seconds ? formatDuration(a.duration_seconds) : "km"}</span>
+              <span className="hidden sm:inline">km</span>
+            </div>
           </>
         ) : (
           <div className="text-xs" style={{ color: "var(--text-muted)" }}>—</div>
         )}
       </div>
-      <div className="col-span-1 text-right tabular text-xs" style={{ color: "var(--text-secondary)" }}>
+      <div className="hidden sm:block sm:col-span-1 text-right tabular text-xs" style={{ color: "var(--text-secondary)" }}>
         {a.duration_seconds ? formatDuration(a.duration_seconds) : "—"}
       </div>
-      <div className="col-span-2 text-right tabular flex items-center justify-end gap-2">
+      <div className="col-span-2 text-right tabular flex items-center justify-end gap-1.5 sm:gap-2">
         {isRun && a.avg_hr ? (
           <>
             <StatusDot tone={tone} />
             <span className="text-sm font-medium">{a.avg_hr}</span>
-            <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>bpm</span>
+            <span className="text-xs hidden sm:inline" style={{ color: "var(--text-tertiary)" }}>bpm</span>
           </>
         ) : (
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>
@@ -171,11 +175,11 @@ function WeeklyVolume({ data }: { data: { week: string; run_km: number; run_coun
       {data.map((d) => {
         const pct = (d.run_km / max) * 100;
         return (
-          <div key={d.week} className="grid grid-cols-12 gap-3 items-center">
-            <div className="col-span-2 text-xs tabular" style={{ color: "var(--text-tertiary)" }}>
+          <div key={d.week} className="grid grid-cols-12 gap-2 sm:gap-3 items-center">
+            <div className="col-span-3 sm:col-span-2 text-xs tabular truncate" style={{ color: "var(--text-tertiary)" }}>
               {d.week}
             </div>
-            <div className="col-span-8 relative">
+            <div className="col-span-6 sm:col-span-8 relative">
               <div className="h-7 rounded" style={{ background: "rgba(255,255,255,0.03)" }}>
                 <div
                   className="h-7 rounded flex items-center justify-end pr-3 transition-all"
@@ -187,7 +191,7 @@ function WeeklyVolume({ data }: { data: { week: string; run_km: number; run_coun
                 />
               </div>
             </div>
-            <div className="col-span-2 text-right tabular">
+            <div className="col-span-3 sm:col-span-2 text-right tabular">
               <div className="text-sm font-medium">{d.run_km.toFixed(1)}</div>
               <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>{d.run_count}× run</div>
             </div>
@@ -201,7 +205,7 @@ function WeeklyVolume({ data }: { data: { week: string; run_km: number; run_coun
 function TrendTable({ data }: { data: Health[] }) {
   const recent = data.slice(0, 7).reverse();
   return (
-    <div className="overflow-x-auto -mx-5 px-5">
+    <div className="overflow-x-auto -mx-4 px-4 sm:-mx-5 sm:px-5">
       <table className="w-full text-sm tabular">
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)" }}>
@@ -265,19 +269,19 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen">
-      <div className="max-w-3xl mx-auto px-5 py-8 space-y-6">
+      <div className="max-w-3xl mx-auto px-4 sm:px-5 py-6 sm:py-8 space-y-5 sm:space-y-6">
 
-        <header className="flex items-end justify-between pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
-          <div>
+        <header className="flex items-end justify-between gap-3 pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="min-w-0">
             <div className="label">Training Dashboard</div>
-            <h1 className="text-2xl font-semibold tracking-tight mt-1" style={{ letterSpacing: "-0.025em" }}>
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight mt-1 truncate" style={{ letterSpacing: "-0.025em" }}>
               Hanif Widiyanto
             </h1>
             <div className="text-xs mt-1 tabular" style={{ color: "var(--text-tertiary)" }}>
               Garmin Forerunner 165
             </div>
           </div>
-          <div className="text-right">
+          <div className="text-right shrink-0">
             <div className="label">Today</div>
             <div className="text-sm font-medium tabular mt-1">
               {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
@@ -285,8 +289,8 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <section className="panel-elevated p-6">
-          <div className="grid grid-cols-2 gap-8">
+        <section className="panel-elevated p-5 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8">
             <div>
               <div className="label">Race · Half Marathon Monas</div>
               <div className="mt-4">
@@ -304,7 +308,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="flex flex-col justify-between">
+            <div className="flex flex-col justify-between sm:border-l-0 border-t sm:border-t-0 pt-5 sm:pt-0" style={{ borderColor: "var(--border)" }}>
               <div>
                 <div className="flex items-center justify-between">
                   <span className="label">Readiness</span>
@@ -391,17 +395,17 @@ export default function Dashboard() {
         )}
 
         {lastRun && (
-          <section className="panel p-6">
-            <div className="flex items-center justify-between mb-5">
+          <section className="panel p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 mb-4 sm:mb-5">
               <span className="label">Latest Run</span>
-              <span className="text-xs tabular" style={{ color: "var(--text-tertiary)" }}>
+              <span className="text-xs tabular shrink-0" style={{ color: "var(--text-tertiary)" }}>
                 {lastRun.date}{lastRun.start_time_local ? ` · ${lastRun.start_time_local.slice(0,5)}` : ""}
               </span>
             </div>
 
-            <div className="text-base font-medium mb-4">{lastRun.name || "Run"}</div>
+            <div className="text-sm sm:text-base font-medium mb-4 break-words">{lastRun.name || "Run"}</div>
 
-            <div className="grid grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-5">
               <div>
                 <div className="label">Distance</div>
                 <div className="mt-1.5 tabular">
@@ -456,39 +460,39 @@ export default function Dashboard() {
         )}
 
         {weeklyData.length > 0 && (
-          <section className="panel p-6">
-            <div className="flex items-center justify-between mb-5">
+          <section className="panel p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 mb-4 sm:mb-5">
               <span className="label">Weekly Running Volume</span>
-              <span className="text-xs tabular" style={{ color: "var(--text-tertiary)" }}>Last 8 weeks · km</span>
+              <span className="text-xs tabular shrink-0" style={{ color: "var(--text-tertiary)" }}>Last 8 weeks · km</span>
             </div>
             <WeeklyVolume data={weeklyData} />
           </section>
         )}
 
         {(data?.healthHistory || []).length > 1 && (
-          <section className="panel p-6">
-            <div className="flex items-center justify-between mb-5">
+          <section className="panel p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 mb-4 sm:mb-5">
               <span className="label">Recovery Trend</span>
-              <span className="text-xs tabular" style={{ color: "var(--text-tertiary)" }}>Last 7 days</span>
+              <span className="text-xs tabular shrink-0" style={{ color: "var(--text-tertiary)" }}>Last 7 days</span>
             </div>
             <TrendTable data={data!.healthHistory} />
           </section>
         )}
 
         {(data?.activities || []).length > 0 && (
-          <section className="panel p-6">
-            <div className="flex items-center justify-between mb-3">
+          <section className="panel p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 mb-3">
               <span className="label">Recent Activities</span>
-              <span className="text-xs tabular" style={{ color: "var(--text-tertiary)" }}>
+              <span className="text-xs tabular shrink-0" style={{ color: "var(--text-tertiary)" }}>
                 {data!.activities.length} entries
               </span>
             </div>
 
-            <div className="grid grid-cols-12 gap-3 pb-2 mb-1" style={{ borderBottom: "1px solid var(--border)" }}>
-              <div className="col-span-5 label">Activity</div>
-              <div className="col-span-2 label">Type</div>
-              <div className="col-span-2 text-right label">Distance</div>
-              <div className="col-span-1 text-right label">Time</div>
+            <div className="grid grid-cols-12 gap-2 sm:gap-3 pb-2 mb-1" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="col-span-7 sm:col-span-5 label">Activity</div>
+              <div className="hidden sm:block sm:col-span-2 label">Type</div>
+              <div className="col-span-3 sm:col-span-2 text-right label">Distance</div>
+              <div className="hidden sm:block sm:col-span-1 text-right label">Time</div>
               <div className="col-span-2 text-right label">Avg HR</div>
             </div>
 
