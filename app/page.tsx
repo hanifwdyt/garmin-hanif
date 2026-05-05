@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import {
   formatDuration, formatDistance, activityLabel,
   readinessLabel, toneColor, hrTone, sleepTone, batteryTone, rhrTone,
   getRaceCountdown, MAF_HR, formatRaceTime, formatPaceFromSeconds,
   trainingStatusTone, trainingStatusLabel, loadRatioTone, spo2Tone,
   HR_ZONE_COLORS, HR_ZONE_LABELS, HM_TARGET_SECONDS,
+  formatJakartaDate, formatRelativeDate, formatRelativeTime,
+  vo2MaxLabel, loadRatioLabel, emptyReasonLabel,
 } from "@/lib/utils";
+
+const ActivityShareModal = dynamic(() => import("./components/ActivityShareModal"), { ssr: false });
 
 interface Activity {
   id: number;
@@ -118,6 +123,77 @@ function Bar({ value, max, tone = "neutral", thin }: {
   return (
     <div className={thin ? "bar-track" : "bar-track"} style={thin ? { height: "4px" } : {}}>
       <div className="bar-fill" style={{ width: `${pct}%`, background: toneColor(tone) }} />
+    </div>
+  );
+}
+
+function Skeleton({ className = "", width, height = 16 }: { className?: string; width?: number | string; height?: number | string }) {
+  return (
+    <div
+      className={`animate-pulse rounded ${className}`}
+      style={{
+        width: width ?? "100%",
+        height: typeof height === "number" ? `${height}px` : height,
+        background: "rgba(255,255,255,0.05)",
+      }}
+    />
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="min-h-screen">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8 space-y-4 sm:space-y-6">
+        {/* Header */}
+        <div className="pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex justify-between gap-3 mb-3">
+            <div className="space-y-2 flex-1">
+              <Skeleton width={120} height={10} />
+              <Skeleton width={180} height={26} />
+              <Skeleton width={140} height={10} />
+            </div>
+            <div className="space-y-2">
+              <Skeleton width={50} height={10} />
+              <Skeleton width={100} height={14} />
+            </div>
+          </div>
+        </div>
+        {/* Hero */}
+        <div className="panel-elevated p-4 sm:p-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-8">
+            <div className="space-y-3">
+              <Skeleton width={150} height={10} />
+              <Skeleton width="100%" height={48} />
+              <Skeleton width="80%" height={14} />
+            </div>
+            <div className="space-y-3">
+              <Skeleton width={120} height={10} />
+              <Skeleton width="100%" height={56} />
+              <Skeleton width="100%" height={6} />
+            </div>
+          </div>
+        </div>
+        {/* 4-card metric grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          {[0,1,2,3].map(i => (
+            <div key={i} className="panel p-3 sm:p-5 space-y-3">
+              <Skeleton width={50} height={10} />
+              <Skeleton width={70} height={28} />
+              <Skeleton width="100%" height={6} />
+            </div>
+          ))}
+        </div>
+        {/* Activity list */}
+        <div className="panel p-4 sm:p-6 space-y-3">
+          <Skeleton width={100} height={10} />
+          {[0,1,2].map(i => (
+            <div key={i} className="flex justify-between gap-3 py-3" style={{ borderTop: i > 0 ? "1px solid var(--border)" : "none" }}>
+              <div className="space-y-2 flex-1"><Skeleton width="60%" height={14} /><Skeleton width="40%" height={10} /></div>
+              <Skeleton width={60} height={14} />
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
@@ -303,13 +379,13 @@ function SplitsTable({ splitsJson }: { splitsJson: string }) {
 // Activity row
 // ──────────────────────────────────────────────────────────
 
-function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
+function ActivityRow({ a, last, onShare }: { a: Activity; last?: boolean; onShare?: (a: Activity) => void }) {
   const isRun = (a.activity_type || "").toLowerCase().includes("run");
   const tone = isRun && a.avg_hr ? hrTone(a.avg_hr) : "neutral";
   const typeLabel = activityLabel(a.activity_type);
   const time = a.start_time_local ? a.start_time_local.slice(0, 5) : "";
   return (
-    <div className={`py-3 ${!last ? "border-b" : ""}`} style={{ borderColor: "var(--border)" }}>
+    <div className={`group py-3 ${!last ? "border-b" : ""}`} style={{ borderColor: "var(--border)" }}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">{a.name || typeLabel}</div>
@@ -317,7 +393,7 @@ function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
             {typeLabel}{a.date ? ` · ${a.date.slice(5)}` : ""}{time ? ` · ${time}` : ""}
           </div>
         </div>
-        <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 tabular">
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0 tabular">
           {a.distance_meters ? (
             <div className="text-right">
               <div className="text-sm font-medium">{formatDistance(a.distance_meters)}<span className="text-xs ml-0.5" style={{ color: "var(--text-tertiary)" }}>km</span></div>
@@ -331,6 +407,21 @@ function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
               <span className="text-xs hidden sm:inline" style={{ color: "var(--text-tertiary)" }}>bpm</span>
             </div>
           ) : <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>}
+          {onShare && (
+            <button
+              onClick={() => onShare(a)}
+              className="text-[11px] px-2 py-1 rounded transition-all"
+              style={{
+                background: "rgba(99,102,241,0.1)",
+                border: "1px solid rgba(99,102,241,0.18)",
+                color: "#a5b4fc",
+              }}
+              title="Download as image"
+              aria-label="Download activity as image"
+            >
+              ↓
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -447,6 +538,16 @@ function VO2Sparkline({ data }: { data: { date: string; vo2_max_running: number 
   );
 }
 
+// ── Font system ──────────────────────────────────────────────
+type FontKey = 'inter' | 'bebas' | 'barlow' | 'oswald' | 'rajdhani';
+const FONT_OPTIONS: { key: FontKey; label: string; family: string; description: string }[] = [
+  { key: 'inter',    label: 'Inter',    family: 'Inter, sans-serif',            description: 'Default' },
+  { key: 'bebas',    label: 'Bebas',    family: '"Bebas Neue", sans-serif',      description: 'Sport Display' },
+  { key: 'barlow',   label: 'Barlow',   family: '"Barlow Condensed", sans-serif', description: 'Athletic Condensed' },
+  { key: 'oswald',   label: 'Oswald',   family: 'Oswald, sans-serif',            description: 'Bold Condensed' },
+  { key: 'rajdhani', label: 'Rajdhani', family: 'Rajdhani, sans-serif',          description: 'Technical' },
+];
+
 // ──────────────────────────────────────────────────────────
 // Main dashboard
 // ──────────────────────────────────────────────────────────
@@ -454,18 +555,65 @@ function VO2Sparkline({ data }: { data: { date: string; vo2_max_running: number 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null);
+  const [showFontMenu, setShowFontMenu] = useState(false);
+  const [sharingActivity, setSharingActivity] = useState<Activity | null>(null);
+  const [fontKey, setFontKey] = useState<FontKey>('inter');
+  const activeFontOption = FONT_OPTIONS.find(f => f.key === fontKey)!;
+  const fontMenuRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    fetch("/api/data")
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+  const loadData = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setRefreshing(true);
+      const r = await fetch("/api/data", { cache: "no-store" });
+      if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+      const d = await r.json();
+      setData(d);
+      setLastFetchedAt(new Date());
+      setError(null);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      setError(msg);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
 
-  if (loading) {
+  useEffect(() => {
+    loadData();
+    const t = setInterval(() => loadData(true), 90_000);
+    return () => clearInterval(t);
+  }, [loadData]);
+
+  // Close font menu on outside click
+  useEffect(() => {
+    if (!showFontMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (fontMenuRef.current && !fontMenuRef.current.contains(e.target as Node)) setShowFontMenu(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showFontMenu]);
+
+  if (loading) return <DashboardSkeleton />;
+
+  if (error && !data) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xs label">Loading</div>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="panel p-6 max-w-sm text-center">
+          <div className="label mb-2" style={{ color: "var(--red)" }}>Failed to load</div>
+          <div className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>{error}</div>
+          <button
+            onClick={() => { setLoading(true); loadData(); }}
+            className="text-sm px-4 py-2 rounded-lg"
+            style={{ background: "rgba(99,102,241,0.15)", border: "1px solid rgba(99,102,241,0.3)", color: "#a5b4fc" }}
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
@@ -488,23 +636,87 @@ export default function Dashboard() {
   const intensityGoal = 150; // WHO guideline
 
   return (
-    <div className="min-h-screen">
+    <>
+    <div className="min-h-screen" style={{ fontFamily: activeFontOption.family }}>
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-5 sm:py-8 space-y-4 sm:space-y-6">
 
         {/* Header */}
-        <header className="flex items-end justify-between gap-3 pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
-          <div className="min-w-0">
-            <div className="label">Training Dashboard</div>
-            <h1 className="text-lg sm:text-2xl font-semibold tracking-tight mt-1 truncate" style={{ letterSpacing: "-0.025em" }}>
-              Hanif Widiyanto
-            </h1>
-            <div className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>Garmin Forerunner 165</div>
-          </div>
-          <div className="text-right flex-shrink-0">
-            <div className="label">Today</div>
-            <div className="text-xs sm:text-sm font-medium tabular mt-1">
-              {new Date().toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+        <header className="pb-4" style={{ borderBottom: "1px solid var(--border)" }}>
+          <div className="flex items-end justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <div className="label">Training Dashboard</div>
+              <h1 className="text-lg sm:text-2xl font-semibold tracking-tight mt-1 truncate" style={{ letterSpacing: "-0.025em" }}>
+                Hanif Widiyanto
+              </h1>
+              <div className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>Garmin Forerunner 165</div>
             </div>
+            <div className="text-right flex-shrink-0">
+              <div className="label">Today · WIB</div>
+              <div className="text-xs sm:text-sm font-medium tabular mt-1">
+                {formatJakartaDate(new Date())}
+              </div>
+              <button
+                onClick={() => loadData()}
+                disabled={refreshing}
+                className="text-[10px] tabular mt-1 inline-flex items-center gap-1 transition-opacity"
+                style={{ color: "var(--text-tertiary)", opacity: refreshing ? 0.5 : 1 }}
+                title="Refresh now"
+              >
+                <span>Updated {lastFetchedAt ? formatRelativeTime(lastFetchedAt) : "—"}</span>
+                <span style={{ display: "inline-block", transform: refreshing ? "rotate(180deg)" : "none", transition: "transform 0.4s" }}>↻</span>
+              </button>
+            </div>
+          </div>
+          {/* Font selector — dropdown */}
+          <div className="flex items-center gap-2 relative" ref={fontMenuRef}>
+            <span className="label" style={{ fontSize: 10 }}>Font</span>
+            <button
+              onClick={() => setShowFontMenu(v => !v)}
+              className="py-1 px-2.5 rounded-lg text-xs transition-all inline-flex items-center gap-1.5"
+              style={{
+                fontFamily: activeFontOption.family,
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                color: 'var(--text-secondary)',
+              }}
+              aria-haspopup="listbox"
+              aria-expanded={showFontMenu}
+            >
+              <span>{activeFontOption.label}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 9 }}>▾</span>
+            </button>
+            {showFontMenu && (
+              <div
+                role="listbox"
+                className="absolute z-10 top-full left-12 mt-1 rounded-lg overflow-hidden"
+                style={{
+                  background: "rgba(20,20,24,0.96)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  backdropFilter: "blur(12px)",
+                  minWidth: 180,
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                }}
+              >
+                {FONT_OPTIONS.map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => { setFontKey(f.key); setShowFontMenu(false); }}
+                    className="w-full text-left px-3 py-2 text-xs transition-colors flex items-center justify-between gap-3"
+                    style={{
+                      fontFamily: f.family,
+                      background: fontKey === f.key ? 'rgba(244,241,236,0.06)' : 'transparent',
+                      color: fontKey === f.key ? '#f0ede4' : 'var(--text-secondary)',
+                      borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    }}
+                    role="option"
+                    aria-selected={fontKey === f.key}
+                  >
+                    <span style={{ fontWeight: fontKey === f.key ? 600 : 400 }}>{f.label}</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: 10, fontFamily: "Inter, sans-serif" }}>{f.description}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </header>
 
@@ -617,23 +829,35 @@ export default function Dashboard() {
             <div className="label mb-4">Performance Metrics</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
               {/* VO2 Max */}
-              <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="label" style={{ fontSize: "10px" }}>VO₂ Max</span>
-                  {data?.vo2History && data.vo2History.length > 1 && (
-                    <VO2Sparkline data={data.vo2History} />
-                  )}
-                </div>
-                <div className="flex items-baseline gap-1 tabular">
-                  <span className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>
-                    {fm.vo2_max_running ? Math.round(fm.vo2_max_running * 10) / 10 : "—"}
-                  </span>
-                  {fm.vo2_max_running && <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>ml/kg/min</span>}
-                </div>
-                {fm.fitness_age && (
-                  <div className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>Fitness age {fm.fitness_age}</div>
-                )}
-              </div>
+              {(() => {
+                const vo2 = fm.vo2_max_running;
+                const vo2Q = vo2 != null ? vo2MaxLabel(vo2) : null;
+                return (
+                  <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="label" style={{ fontSize: "10px" }}>VO₂ Max</span>
+                      {data?.vo2History && data.vo2History.length > 1 && (
+                        <VO2Sparkline data={data.vo2History} />
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-1 tabular">
+                      <span className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>
+                        {vo2 ? Math.round(vo2 * 10) / 10 : "—"}
+                      </span>
+                      {vo2 && <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>ml/kg/min</span>}
+                    </div>
+                    {vo2Q && (
+                      <div className="mt-1 flex items-center gap-1.5 text-xs">
+                        <StatusDot tone={vo2Q.tone} />
+                        <span style={{ color: toneColor(vo2Q.tone) }}>{vo2Q.label}</span>
+                        {fm.fitness_age && (
+                          <span style={{ color: "var(--text-muted)" }}>· age {fm.fitness_age}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Training Status */}
               {fm.training_status && (
@@ -665,6 +889,11 @@ export default function Dashboard() {
                       {fm.load_ratio ? fm.load_ratio.toFixed(2) : "—"}
                     </span>
                   </div>
+                  {fm.load_ratio != null && (
+                    <div className="mt-0.5 text-xs" style={{ color: toneColor(loadRatioTone(fm.load_ratio)) }}>
+                      {loadRatioLabel(fm.load_ratio)}
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: "var(--text-tertiary)" }}>
                     <span>A {fm.acute_load ?? "—"}</span>
                     <span>C {fm.chronic_load ?? "—"}</span>
@@ -721,6 +950,12 @@ export default function Dashboard() {
         {/* ── Health Metrics ── */}
         {h && (
           <section className="space-y-3">
+            <div className="flex items-baseline justify-between gap-3 px-1">
+              <span className="label">Recovery · Today</span>
+              <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>
+                {formatRelativeDate(h.date)}
+              </span>
+            </div>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <MetricCard
                 label="Sleep"
@@ -736,7 +971,19 @@ export default function Dashboard() {
                 value={h.hrv_last_night ? String(Math.round(h.hrv_last_night)) : "—"}
                 unit="ms"
                 sub={h.hrv_status ? h.hrv_status : h.hrv_weekly_avg ? `7d avg ${Math.round(h.hrv_weekly_avg)}ms` : undefined}
-                tone={h.hrv_status?.toLowerCase().includes("balanced") ? "good" : "warn"}
+                tone={
+                  !h.hrv_last_night
+                    ? undefined
+                    : h.hrv_status?.toLowerCase().includes("balanced")
+                    ? "good"
+                    : h.hrv_status?.toLowerCase().includes("low") || h.hrv_status?.toLowerCase().includes("unbalanced")
+                    ? "bad"
+                    : h.hrv_weekly_avg && h.hrv_last_night >= h.hrv_weekly_avg * 0.95
+                    ? "good"
+                    : h.hrv_weekly_avg && h.hrv_last_night < h.hrv_weekly_avg * 0.85
+                    ? "bad"
+                    : "warn"
+                }
               />
               <MetricCard
                 label="Body Battery"
@@ -821,9 +1068,9 @@ export default function Dashboard() {
 
         {!h && (
           <div className="panel p-10 text-center">
-            <div className="label">No health data</div>
+            <div className="label">No health data · {emptyReasonLabel("awaiting_sync")}</div>
             <div className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>
-              Awaiting next sync from Garmin
+              Trigger a sync from Telegram or wait for the next scheduled sync.
             </div>
           </div>
         )}
@@ -833,9 +1080,23 @@ export default function Dashboard() {
           <section className="panel p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
               <span className="label">Latest Run</span>
-              <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>
-                {lastRun.date?.slice(5)}{lastRun.start_time_local ? ` · ${lastRun.start_time_local.slice(0, 5)}` : ""}
-              </span>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <span className="text-xs tabular" style={{ color: "var(--text-tertiary)" }}>
+                  {lastRun.date?.slice(5)}{lastRun.start_time_local ? ` · ${lastRun.start_time_local.slice(0, 5)}` : ""}
+                </span>
+                <button
+                  onClick={() => setSharingActivity(lastRun)}
+                  className="text-xs px-2.5 py-1 rounded-lg transition-all"
+                  style={{
+                    background: "rgba(99,102,241,0.12)",
+                    border: "1px solid rgba(99,102,241,0.25)",
+                    color: "#a5b4fc",
+                  }}
+                  title="Download as image"
+                >
+                  ↓ Share
+                </button>
+              </div>
             </div>
 
             <div className="text-sm font-medium mb-4 truncate" style={{ color: "var(--text-secondary)" }}>{lastRun.name || "Run"}</div>
@@ -933,15 +1194,21 @@ export default function Dashboard() {
         )}
 
         {/* ── Recovery Trend ── */}
-        {(data?.healthHistory || []).length > 1 && (
-          <section className="panel p-4 sm:p-6">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <span className="label">Recovery Trend</span>
-              <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>Last 7 days</span>
-            </div>
-            <TrendTable data={data!.healthHistory} />
-          </section>
-        )}
+        {(data?.healthHistory || []).length > 1 && (() => {
+          const trendData = data!.healthHistory;
+          const shown = Math.min(trendData.length, 7);
+          return (
+            <section className="panel p-4 sm:p-6">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <span className="label">Recovery Trend</span>
+                <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>
+                  {shown} / 7 days
+                </span>
+              </div>
+              <TrendTable data={trendData} />
+            </section>
+          );
+        })()}
 
         {/* ── Recent Activities ── */}
         {(data?.activities || []).length > 0 && (
@@ -959,7 +1226,7 @@ export default function Dashboard() {
             </div>
             <div className="sm:hidden" style={{ borderBottom: "1px solid var(--border)" }} />
             {data!.activities.slice(0, 10).map((a, i, arr) => (
-              <ActivityRow key={a.activity_id} a={a} last={i === arr.length - 1} />
+              <ActivityRow key={a.activity_id} a={a} last={i === arr.length - 1} onShare={setSharingActivity} />
             ))}
           </section>
         )}
@@ -979,5 +1246,14 @@ export default function Dashboard() {
         </footer>
       </div>
     </div>
+
+    {sharingActivity && (
+      <ActivityShareModal
+        activity={sharingActivity}
+        onClose={() => setSharingActivity(null)}
+        canvasFont={activeFontOption.family}
+      />
+    )}
+    </>
   );
 }
