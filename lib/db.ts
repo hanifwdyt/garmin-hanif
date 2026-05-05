@@ -18,6 +18,13 @@ export function getDb(): Database.Database {
   return _db;
 }
 
+function ensureColumn(db: Database.Database, table: string, column: string, ddl: string) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  if (!cols.some(c => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
 function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS activities (
@@ -59,5 +66,77 @@ function migrate(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS fitness_metrics (
+      date TEXT PRIMARY KEY,
+      vo2_max_running REAL,
+      vo2_max_cycling REAL,
+      fitness_age INTEGER,
+      training_status TEXT,
+      training_status_load_balance TEXT,
+      acute_load REAL,
+      chronic_load REAL,
+      load_ratio REAL,
+      hill_score REAL,
+      endurance_score REAL,
+      lactate_threshold_hr INTEGER,
+      lactate_threshold_speed_mps REAL,
+      lactate_threshold_pace_min_per_km TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS race_predictions (
+      date TEXT PRIMARY KEY,
+      race_5k_seconds INTEGER,
+      race_10k_seconds INTEGER,
+      race_half_marathon_seconds INTEGER,
+      race_marathon_seconds INTEGER,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS activity_details (
+      activity_id TEXT PRIMARY KEY,
+      hr_zone_1_seconds INTEGER,
+      hr_zone_2_seconds INTEGER,
+      hr_zone_3_seconds INTEGER,
+      hr_zone_4_seconds INTEGER,
+      hr_zone_5_seconds INTEGER,
+      weather_temp_c REAL,
+      weather_apparent_temp_c REAL,
+      weather_humidity_pct INTEGER,
+      weather_wind_kph REAL,
+      weather_conditions TEXT,
+      splits_json TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS personal_records (
+      record_type TEXT PRIMARY KEY,
+      value_seconds INTEGER,
+      value_distance_meters REAL,
+      activity_id TEXT,
+      record_date TEXT,
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
   `);
+
+  // Add new columns to health (idempotent)
+  ensureColumn(db, "health", "spo2_avg", "INTEGER");
+  ensureColumn(db, "health", "spo2_lowest", "INTEGER");
+  ensureColumn(db, "health", "respiration_avg", "REAL");
+  ensureColumn(db, "health", "respiration_lowest", "REAL");
+  ensureColumn(db, "health", "respiration_highest", "REAL");
+  ensureColumn(db, "health", "intensity_minutes_moderate", "INTEGER");
+  ensureColumn(db, "health", "intensity_minutes_vigorous", "INTEGER");
+  ensureColumn(db, "health", "intensity_minutes_weekly", "INTEGER");
+  ensureColumn(db, "health", "floors_climbed", "INTEGER");
+  ensureColumn(db, "health", "floors_goal", "INTEGER");
+  ensureColumn(db, "health", "weight_kg", "REAL");
+  ensureColumn(db, "health", "body_fat_pct", "REAL");
+  ensureColumn(db, "health", "bmi", "REAL");
+  ensureColumn(db, "health", "training_readiness_score", "INTEGER");
+  ensureColumn(db, "health", "training_readiness_level", "TEXT");
+  ensureColumn(db, "health", "training_readiness_factors_json", "TEXT");
+  ensureColumn(db, "health", "hydration_ml", "INTEGER");
+  ensureColumn(db, "health", "hydration_goal_ml", "INTEGER");
 }

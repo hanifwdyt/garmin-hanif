@@ -1,5 +1,6 @@
 export const MAF_HR = 153;
 export const RACE_DATE = new Date("2026-06-13T05:00:00+07:00");
+export const HM_TARGET_SECONDS = 2 * 3600 + 45 * 60; // sub 2:45
 
 export function getRaceCountdown(): { days: number; hours: number; minutes: number } {
   const now = new Date();
@@ -47,8 +48,24 @@ export function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+export function formatRaceTime(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 export function formatDistance(meters: number): string {
   return `${(meters / 1000).toFixed(2)}`;
+}
+
+export function formatPaceFromSeconds(totalSec: number, distM: number): string {
+  if (!totalSec || !distM) return "—";
+  const paceSec = totalSec / (distM / 1000);
+  const m = Math.floor(paceSec / 60);
+  const s = Math.floor(paceSec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 export function activityLabel(type: string): string {
@@ -66,6 +83,36 @@ export function readinessLabel(score: number): { label: string; tone: "good" | "
   if (score >= 78) return { label: "Optimal", tone: "good" };
   if (score >= 52) return { label: "Moderate", tone: "warn" };
   return { label: "Low", tone: "bad" };
+}
+
+export function readinessLevelLabel(level: string): { label: string; tone: "good" | "warn" | "bad" } {
+  const l = (level || "").toUpperCase();
+  if (l.includes("MAXIMUM") || l.includes("HIGH")) return { label: l.charAt(0) + l.slice(1).toLowerCase(), tone: "good" };
+  if (l.includes("MODERATE")) return { label: "Moderate", tone: "warn" };
+  if (l.includes("LOW") || l.includes("POOR")) return { label: l.charAt(0) + l.slice(1).toLowerCase(), tone: "bad" };
+  return { label: l || "—", tone: "warn" };
+}
+
+export function trainingStatusTone(status: string | null | undefined): "good" | "warn" | "bad" | "neutral" {
+  if (!status) return "neutral";
+  const s = status.toUpperCase();
+  if (s.includes("PRODUCTIVE") || s.includes("PEAKING")) return "good";
+  if (s.includes("MAINTAINING") || s.includes("RECOVERY")) return "warn";
+  if (s.includes("OVERREACHING") || s.includes("UNPRODUCTIVE") || s.includes("DETRAINING") || s.includes("STRAINED")) return "bad";
+  return "neutral";
+}
+
+export function trainingStatusLabel(status: string | null | undefined): string {
+  if (!status) return "—";
+  return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase().replace(/_/g, " ");
+}
+
+export function loadRatioTone(ratio: number | null | undefined): "good" | "warn" | "bad" | "neutral" {
+  if (ratio == null) return "neutral";
+  if (ratio >= 0.8 && ratio <= 1.3) return "good";
+  if (ratio >= 0.5 && ratio < 0.8) return "warn";
+  if (ratio > 1.3 && ratio <= 1.5) return "warn";
+  return "bad";
 }
 
 export function toneColor(tone: "good" | "warn" | "bad" | "neutral"): string {
@@ -98,3 +145,12 @@ export function rhrTone(v: number): "good" | "warn" | "bad" {
   if (v <= 68) return "warn";
   return "bad";
 }
+
+export function spo2Tone(v: number): "good" | "warn" | "bad" {
+  if (v >= 95) return "good";
+  if (v >= 90) return "warn";
+  return "bad";
+}
+
+export const HR_ZONE_COLORS = ["#94a3b8", "#22c55e", "#3b82f6", "#f59e0b", "#ef4444"];
+export const HR_ZONE_LABELS = ["Z1 Recovery", "Z2 Aerobic", "Z3 Tempo", "Z4 Threshold", "Z5 VO2 Max"];

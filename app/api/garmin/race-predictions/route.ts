@@ -9,18 +9,9 @@ function checkAuth(req: NextRequest): boolean {
   return (req.headers.get("x-minion-secret") || "") === SECRET;
 }
 
-const HEALTH_COLUMNS = [
-  "sleep_score", "sleep_duration_seconds", "sleep_start", "sleep_end",
-  "hrv_weekly_avg", "hrv_last_night", "hrv_status",
-  "body_battery_morning", "body_battery_evening",
-  "resting_hr", "stress_avg", "steps", "calories_active",
-  "spo2_avg", "spo2_lowest",
-  "respiration_avg", "respiration_lowest", "respiration_highest",
-  "intensity_minutes_moderate", "intensity_minutes_vigorous", "intensity_minutes_weekly",
-  "floors_climbed", "floors_goal",
-  "weight_kg", "body_fat_pct", "bmi",
-  "training_readiness_score", "training_readiness_level", "training_readiness_factors_json",
-  "hydration_ml", "hydration_goal_ml",
+const COLS = [
+  "race_5k_seconds", "race_10k_seconds",
+  "race_half_marathon_seconds", "race_marathon_seconds",
 ];
 
 export async function POST(req: NextRequest) {
@@ -30,12 +21,12 @@ export async function POST(req: NextRequest) {
   if (!body?.date) return NextResponse.json({ error: "date required" }, { status: 400 });
 
   const db = getDb();
-  const insertCols = ["date", ...HEALTH_COLUMNS, "updated_at"];
+  const insertCols = ["date", ...COLS, "updated_at"];
   const placeholders = insertCols.map(c => c === "updated_at" ? "datetime('now')" : `@${c}`).join(", ");
-  const updateClauses = HEALTH_COLUMNS.map(c => `${c} = excluded.${c}`).join(", ");
+  const updateClauses = COLS.map(c => `${c} = excluded.${c}`).join(", ");
 
   const sql = `
-    INSERT INTO health (${insertCols.join(", ")})
+    INSERT INTO race_predictions (${insertCols.join(", ")})
     VALUES (${placeholders})
     ON CONFLICT(date) DO UPDATE SET
       ${updateClauses},
@@ -43,7 +34,7 @@ export async function POST(req: NextRequest) {
   `;
 
   const params: Record<string, unknown> = { date: body.date };
-  for (const col of HEALTH_COLUMNS) {
+  for (const col of COLS) {
     params[col] = body[col] ?? null;
   }
 

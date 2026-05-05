@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import {
   formatDuration, formatDistance, activityLabel,
   readinessLabel, toneColor, hrTone, sleepTone, batteryTone, rhrTone,
-  getRaceCountdown, MAF_HR,
+  getRaceCountdown, MAF_HR, formatRaceTime, formatPaceFromSeconds,
+  trainingStatusTone, trainingStatusLabel, loadRatioTone, spo2Tone,
+  HR_ZONE_COLORS, HR_ZONE_LABELS, HM_TARGET_SECONDS,
 } from "@/lib/utils";
 
 interface Activity {
@@ -22,6 +24,18 @@ interface Activity {
   calories: number;
   elevation_gain_m: number;
   name: string;
+  // activity_details (joined)
+  hr_zone_1_seconds: number | null;
+  hr_zone_2_seconds: number | null;
+  hr_zone_3_seconds: number | null;
+  hr_zone_4_seconds: number | null;
+  hr_zone_5_seconds: number | null;
+  weather_temp_c: number | null;
+  weather_apparent_temp_c: number | null;
+  weather_humidity_pct: number | null;
+  weather_wind_kph: number | null;
+  weather_conditions: string | null;
+  splits_json: string | null;
 }
 
 interface Health {
@@ -39,6 +53,42 @@ interface Health {
   stress_avg: number;
   steps: number;
   calories_active: number;
+  // new fields
+  spo2_avg: number | null;
+  respiration_avg: number | null;
+  training_readiness_score: number | null;
+  training_readiness_level: string | null;
+  intensity_minutes_moderate: number | null;
+  intensity_minutes_vigorous: number | null;
+  intensity_minutes_weekly_moderate: number | null;
+  intensity_minutes_weekly_vigorous: number | null;
+  weight_kg: number | null;
+  body_fat_pct: number | null;
+  hydration_ml: number | null;
+  hydration_goal_ml: number | null;
+  floors_climbed: number | null;
+}
+
+interface FitnessMetrics {
+  date: string;
+  vo2_max_running: number | null;
+  fitness_age: number | null;
+  training_status: string | null;
+  acute_load: number | null;
+  chronic_load: number | null;
+  load_ratio: number | null;
+  hill_score: number | null;
+  endurance_score: number | null;
+  lactate_threshold_hr: number | null;
+  lactate_threshold_pace_min_per_km: number | null;
+}
+
+interface RacePredictions {
+  date: string;
+  race_5k_seconds: number | null;
+  race_10k_seconds: number | null;
+  race_half_marathon_seconds: number | null;
+  race_marathon_seconds: number | null;
 }
 
 interface DashboardData {
@@ -47,16 +97,26 @@ interface DashboardData {
   healthHistory: Health[];
   weeklyMileage: { week: string; run_km: number; run_count: number }[];
   readiness: number | null;
+  readinessSource: "garmin" | "computed";
+  fitnessMetrics: FitnessMetrics | null;
+  vo2History: { date: string; vo2_max_running: number }[];
+  racePredictions: RacePredictions | null;
 }
+
+// ──────────────────────────────────────────────────────────
+// Primitives
+// ──────────────────────────────────────────────────────────
 
 function StatusDot({ tone }: { tone: "good" | "warn" | "bad" | "neutral" }) {
   return <span className="dot flex-shrink-0" style={{ background: toneColor(tone) }} />;
 }
 
-function Bar({ value, max, tone = "neutral" }: { value: number; max: number; tone?: "good" | "warn" | "bad" | "neutral" }) {
+function Bar({ value, max, tone = "neutral", thin }: {
+  value: number; max: number; tone?: "good" | "warn" | "bad" | "neutral"; thin?: boolean;
+}) {
   const pct = Math.min(100, Math.max(0, (value / max) * 100));
   return (
-    <div className="bar-track">
+    <div className={thin ? "bar-track" : "bar-track"} style={thin ? { height: "4px" } : {}}>
       <div className="bar-fill" style={{ width: `${pct}%`, background: toneColor(tone) }} />
     </div>
   );
@@ -68,7 +128,6 @@ function Countdown() {
     const t = setInterval(() => setC(getRaceCountdown()), 60000);
     return () => clearInterval(t);
   }, []);
-
   return (
     <div className="flex items-baseline gap-3 sm:gap-6 tabular">
       <div>
@@ -88,17 +147,10 @@ function Countdown() {
   );
 }
 
-// Compact card for mobile 2-col grid
-function MetricCard({
-  label, value, unit, sub, tone, barValue, barMax,
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  sub?: string;
+function MetricCard({ label, value, unit, sub, tone, barValue, barMax }: {
+  label: string; value: string; unit?: string; sub?: string;
   tone?: "good" | "warn" | "bad" | "neutral";
-  barValue?: number;
-  barMax?: number;
+  barValue?: number; barMax?: number;
 }) {
   return (
     <div className="panel p-3 sm:p-5">
@@ -110,9 +162,7 @@ function MetricCard({
         <span className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>{value}</span>
         {unit && <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>{unit}</span>}
       </div>
-      {sub && (
-        <div className="mt-0.5 sm:mt-1 tabular truncate" style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{sub}</div>
-      )}
+      {sub && <div className="mt-0.5 sm:mt-1 tabular truncate" style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>{sub}</div>}
       {barValue != null && barMax != null && (
         <div className="mt-2 sm:mt-3"><Bar value={barValue} max={barMax} tone={tone} /></div>
       )}
@@ -120,12 +170,12 @@ function MetricCard({
   );
 }
 
-// Inline stat row — for steps / secondary metrics
-function StatRow({ label, value, unit, sub, tone }: {
-  label: string; value: string; unit?: string; sub?: string; tone?: "good" | "warn" | "bad" | "neutral";
+function StatRow({ label, value, unit, sub, tone, last }: {
+  label: string; value: string; unit?: string; sub?: string;
+  tone?: "good" | "warn" | "bad" | "neutral"; last?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+    <div className="flex items-center justify-between py-3" style={{ borderBottom: last ? "none" : "1px solid var(--border)" }}>
       <div className="flex items-center gap-2 min-w-0">
         {tone && <StatusDot tone={tone} />}
         <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{label}</span>
@@ -139,37 +189,139 @@ function StatRow({ label, value, unit, sub, tone }: {
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// HR Zones bar
+// ──────────────────────────────────────────────────────────
+
+function HRZoneBar({ run }: { run: Activity }) {
+  const zones = [
+    run.hr_zone_1_seconds, run.hr_zone_2_seconds, run.hr_zone_3_seconds,
+    run.hr_zone_4_seconds, run.hr_zone_5_seconds,
+  ];
+  const hasData = zones.some(z => z != null && z > 0);
+  if (!hasData) return null;
+
+  const total = zones.reduce((s: number, z) => s + (z || 0), 0);
+  if (!total) return null;
+
+  return (
+    <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+      <div className="label mb-3" style={{ fontSize: "10px" }}>HR Zones</div>
+      {/* Stacked bar */}
+      <div className="flex rounded overflow-hidden" style={{ height: "10px" }}>
+        {zones.map((z, i) => {
+          const pct = ((z || 0) / total) * 100;
+          if (!pct) return null;
+          return (
+            <div key={i} style={{ width: `${pct}%`, background: HR_ZONE_COLORS[i] }} title={`${HR_ZONE_LABELS[i]}: ${formatDuration(z || 0)}`} />
+          );
+        })}
+      </div>
+      {/* Legend */}
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {zones.map((z, i) => {
+          if (!z) return null;
+          const pct = Math.round((z / total) * 100);
+          return (
+            <div key={i} className="flex items-center gap-1.5 tabular" style={{ fontSize: "11px", color: "var(--text-tertiary)" }}>
+              <span className="inline-block rounded-full flex-shrink-0" style={{ width: "7px", height: "7px", background: HR_ZONE_COLORS[i] }} />
+              <span style={{ color: "var(--text-secondary)" }}>{HR_ZONE_LABELS[i]}</span>
+              <span>{pct}%</span>
+              <span style={{ color: "var(--text-muted)" }}>({formatDuration(z)})</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Splits table
+// ──────────────────────────────────────────────────────────
+
+interface Split {
+  splitNumber?: number;
+  startLatitude?: number;
+  startLongitude?: number;
+  distance?: number;
+  duration?: number;
+  movingDuration?: number;
+  averageSpeed?: number;
+  maxSpeed?: number;
+  averageHR?: number;
+  maxHR?: number;
+  elevationGain?: number;
+  elevationLoss?: number;
+}
+
+function SplitsTable({ splitsJson }: { splitsJson: string }) {
+  let splits: Split[] = [];
+  try { splits = JSON.parse(splitsJson); } catch { return null; }
+  if (!splits?.length) return null;
+
+  return (
+    <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+      <div className="label mb-3" style={{ fontSize: "10px" }}>Km Splits</div>
+      <div style={{ overflowX: "auto", marginLeft: "-1rem", marginRight: "-1rem", paddingLeft: "1rem", paddingRight: "1rem" }}>
+        <table className="w-full text-xs tabular" style={{ minWidth: "280px" }}>
+          <thead>
+            <tr style={{ borderBottom: "1px solid var(--border)" }}>
+              <th className="text-left py-1.5 pr-3 label font-normal">km</th>
+              <th className="text-right py-1.5 pr-3 label font-normal">Pace</th>
+              <th className="text-right py-1.5 pr-3 label font-normal">Avg HR</th>
+              <th className="text-right py-1.5 label font-normal">Elev</th>
+            </tr>
+          </thead>
+          <tbody>
+            {splits.slice(0, 15).map((s, i) => {
+              const dist = s.distance || 0;
+              const dur = s.duration || s.movingDuration || 0;
+              const paceStr = dist && dur ? formatPaceFromSeconds(dur, dist) : "—";
+              const tone = s.averageHR ? hrTone(s.averageHR) : "neutral";
+              return (
+                <tr key={i} style={{ borderBottom: i < splits.length - 1 ? "1px solid var(--border)" : "none" }}>
+                  <td className="py-1.5 pr-3" style={{ color: "var(--text-secondary)" }}>{i + 1}</td>
+                  <td className="py-1.5 pr-3 text-right font-medium">{paceStr}</td>
+                  <td className="py-1.5 pr-3 text-right" style={{ color: s.averageHR ? toneColor(tone) : "var(--text-muted)" }}>
+                    {s.averageHR ? Math.round(s.averageHR) : "—"}
+                  </td>
+                  <td className="py-1.5 text-right" style={{ color: "var(--text-tertiary)" }}>
+                    {s.elevationGain != null ? `+${Math.round(s.elevationGain)}` : "—"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Activity row
+// ──────────────────────────────────────────────────────────
+
 function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
   const isRun = (a.activity_type || "").toLowerCase().includes("run");
   const tone = isRun && a.avg_hr ? hrTone(a.avg_hr) : "neutral";
   const typeLabel = activityLabel(a.activity_type);
   const time = a.start_time_local ? a.start_time_local.slice(0, 5) : "";
-
   return (
-    <div
-      className={`py-3 ${!last ? "border-b" : ""}`}
-      style={{ borderColor: "var(--border)" }}
-    >
-      {/* Mobile layout: flex rows */}
+    <div className={`py-3 ${!last ? "border-b" : ""}`} style={{ borderColor: "var(--border)" }}>
       <div className="flex items-start justify-between gap-2">
-        {/* Left: name + meta */}
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">{a.name || typeLabel}</div>
           <div className="text-xs mt-0.5 tabular" style={{ color: "var(--text-tertiary)" }}>
-            {typeLabel}
-            {a.date ? ` · ${a.date.slice(5)}` : ""}
-            {time ? ` · ${time}` : ""}
+            {typeLabel}{a.date ? ` · ${a.date.slice(5)}` : ""}{time ? ` · ${time}` : ""}
           </div>
         </div>
-
-        {/* Right: metrics inline */}
         <div className="flex items-center gap-3 sm:gap-4 flex-shrink-0 tabular">
           {a.distance_meters ? (
             <div className="text-right">
               <div className="text-sm font-medium">{formatDistance(a.distance_meters)}<span className="text-xs ml-0.5" style={{ color: "var(--text-tertiary)" }}>km</span></div>
-              {a.duration_seconds ? (
-                <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>{formatDuration(a.duration_seconds)}</div>
-              ) : null}
+              {a.duration_seconds ? <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>{formatDuration(a.duration_seconds)}</div> : null}
             </div>
           ) : null}
           {isRun && a.avg_hr ? (
@@ -178,18 +330,19 @@ function ActivityRow({ a, last }: { a: Activity; last?: boolean }) {
               <span className="text-sm font-medium">{a.avg_hr}</span>
               <span className="text-xs hidden sm:inline" style={{ color: "var(--text-tertiary)" }}>bpm</span>
             </div>
-          ) : (
-            <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>
-          )}
+          ) : <span className="text-xs" style={{ color: "var(--text-muted)" }}>—</span>}
         </div>
       </div>
     </div>
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// Weekly Volume
+// ──────────────────────────────────────────────────────────
+
 function WeeklyVolume({ data }: { data: { week: string; run_km: number; run_count: number }[] }) {
   const max = Math.max(...data.map(d => d.run_km), 30);
-
   return (
     <div className="space-y-2">
       {data.map((d) => {
@@ -222,18 +375,23 @@ function WeeklyVolume({ data }: { data: { week: string; run_km: number; run_coun
   );
 }
 
+// ──────────────────────────────────────────────────────────
+// Recovery Trend table
+// ──────────────────────────────────────────────────────────
+
 function TrendTable({ data }: { data: Health[] }) {
   const recent = data.slice(0, 7).reverse();
   return (
     <div style={{ overflowX: "auto", marginLeft: "-1rem", marginRight: "-1rem", paddingLeft: "1rem", paddingRight: "1rem" }}>
-      <table className="w-full text-sm tabular" style={{ minWidth: "320px" }}>
+      <table className="w-full text-sm tabular" style={{ minWidth: "340px" }}>
         <thead>
           <tr style={{ borderBottom: "1px solid var(--border)" }}>
             <th className="text-left py-2 pr-3 label font-normal whitespace-nowrap">Date</th>
             <th className="text-right py-2 pr-3 label font-normal whitespace-nowrap">Sleep</th>
             <th className="text-right py-2 pr-3 label font-normal whitespace-nowrap">HRV</th>
             <th className="text-right py-2 pr-3 label font-normal whitespace-nowrap">Battery</th>
-            <th className="text-right py-2 label font-normal whitespace-nowrap">RHR</th>
+            <th className="text-right py-2 pr-3 label font-normal whitespace-nowrap">RHR</th>
+            <th className="text-right py-2 label font-normal whitespace-nowrap">SpO₂</th>
           </tr>
         </thead>
         <tbody>
@@ -251,7 +409,12 @@ function TrendTable({ data }: { data: Health[] }) {
                   {d.body_battery_morning ?? "—"}
                 </span>
               </td>
-              <td className="py-2 text-right">{d.resting_hr ?? "—"}</td>
+              <td className="py-2 pr-3 text-right">{d.resting_hr ?? "—"}</td>
+              <td className="py-2 text-right">
+                <span style={{ color: d.spo2_avg ? toneColor(spo2Tone(d.spo2_avg)) : "var(--text-muted)" }}>
+                  {d.spo2_avg ? `${Math.round(d.spo2_avg)}%` : "—"}
+                </span>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -259,6 +422,34 @@ function TrendTable({ data }: { data: Health[] }) {
     </div>
   );
 }
+
+// ──────────────────────────────────────────────────────────
+// VO2 Max sparkline (SVG)
+// ──────────────────────────────────────────────────────────
+
+function VO2Sparkline({ data }: { data: { date: string; vo2_max_running: number }[] }) {
+  if (data.length < 2) return null;
+  const vals = data.map(d => d.vo2_max_running);
+  const minV = Math.min(...vals) - 1;
+  const maxV = Math.max(...vals) + 1;
+  const W = 120, H = 32;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * W;
+    const y = H - ((v - minV) / (maxV - minV)) * H;
+    return `${x},${y}`;
+  }).join(" ");
+  const lastY = H - ((vals[vals.length - 1] - minV) / (maxV - minV)) * H;
+  return (
+    <svg width={W} height={H} style={{ overflow: "visible" }}>
+      <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeOpacity="0.6" />
+      <circle cx={W} cy={lastY} r="3" fill="var(--accent)" />
+    </svg>
+  );
+}
+
+// ──────────────────────────────────────────────────────────
+// Main dashboard
+// ──────────────────────────────────────────────────────────
 
 export default function Dashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
@@ -281,11 +472,20 @@ export default function Dashboard() {
 
   const h = data?.todayHealth;
   const recentRuns = data?.activities.filter(a => (a.activity_type || "").toLowerCase().includes("run")) || [];
-  const lastRun = recentRuns[0];
+  const lastRun = recentRuns[0] as Activity | undefined;
   const readiness = data?.readiness;
   const ready = readiness != null ? readinessLabel(readiness) : null;
   const sleepHours = h?.sleep_duration_seconds ? (h.sleep_duration_seconds / 3600).toFixed(1) : null;
   const weeklyData = data?.weeklyMileage || [];
+  const fm = data?.fitnessMetrics;
+  const rp = data?.racePredictions;
+  const readinessSource = data?.readinessSource;
+
+  // Intensity minutes (weekly moderate + vigorous)
+  const weeklyMod = h?.intensity_minutes_weekly_moderate ?? 0;
+  const weeklyVig = h?.intensity_minutes_weekly_vigorous ?? 0;
+  const weeklyIntensityTotal = weeklyMod + weeklyVig * 2; // vigorous counts double
+  const intensityGoal = 150; // WHO guideline
 
   return (
     <div className="min-h-screen">
@@ -308,15 +508,13 @@ export default function Dashboard() {
           </div>
         </header>
 
-        {/* Race Hero */}
+        {/* ── Race Hero ── */}
         <section className="panel-elevated p-4 sm:p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-8">
             {/* Countdown */}
             <div>
               <div className="label">Race · Half Marathon Monas</div>
-              <div className="mt-3 sm:mt-4">
-                <Countdown />
-              </div>
+              <div className="mt-3 sm:mt-4"><Countdown /></div>
               <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: "1px solid var(--border)" }}>
                 <div>
                   <div className="text-xs" style={{ color: "var(--text-tertiary)" }}>Race day</div>
@@ -332,7 +530,9 @@ export default function Dashboard() {
             {/* Readiness */}
             <div className="border-t sm:border-t-0 pt-4 sm:pt-0" style={{ borderColor: "var(--border)" }}>
               <div className="flex items-center justify-between">
-                <span className="label">Readiness</span>
+                <span className="label">
+                  {readinessSource === "garmin" ? "Readiness · Garmin" : "Readiness · Computed"}
+                </span>
                 {ready && <StatusDot tone={ready.tone} />}
               </div>
               {readiness != null ? (
@@ -341,12 +541,12 @@ export default function Dashboard() {
                     <span className="text-5xl font-semibold tracking-tight" style={{ letterSpacing: "-0.04em" }}>{readiness}</span>
                     <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>/ 100</span>
                   </div>
-                  <div className="text-sm font-medium mt-1" style={{ color: ready ? toneColor(ready.tone) : undefined }}>
-                    {ready?.label}
-                  </div>
-                  <div className="mt-4">
-                    <Bar value={readiness} max={100} tone={ready?.tone} />
-                  </div>
+                  {h?.training_readiness_level && (
+                    <div className="text-sm font-medium mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                      {h.training_readiness_level.charAt(0) + h.training_readiness_level.slice(1).toLowerCase().replace(/_/g, " ")}
+                    </div>
+                  )}
+                  <div className="mt-3"><Bar value={readiness} max={100} tone={ready?.tone} /></div>
                 </>
               ) : (
                 <div className="mt-3 text-sm" style={{ color: "var(--text-muted)" }}>No data yet</div>
@@ -355,10 +555,172 @@ export default function Dashboard() {
           </div>
         </section>
 
-        {/* Health Metrics */}
+        {/* ── Race Predictions ── */}
+        {rp && (
+          <section className="panel p-4 sm:p-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <span className="label">Garmin Race Predictions</span>
+              <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>{rp.date}</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {/* 5K */}
+              <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                <div className="label" style={{ fontSize: "10px" }}>5K</div>
+                <div className="mt-1.5 text-lg sm:text-xl font-semibold tracking-tight tabular" style={{ letterSpacing: "-0.02em" }}>
+                  {rp.race_5k_seconds ? formatRaceTime(rp.race_5k_seconds) : "—"}
+                </div>
+              </div>
+              {/* 10K */}
+              <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                <div className="label" style={{ fontSize: "10px" }}>10K</div>
+                <div className="mt-1.5 text-lg sm:text-xl font-semibold tracking-tight tabular" style={{ letterSpacing: "-0.02em" }}>
+                  {rp.race_10k_seconds ? formatRaceTime(rp.race_10k_seconds) : "—"}
+                </div>
+              </div>
+              {/* Half Marathon — highlighted */}
+              {(() => {
+                const hmSec = rp.race_half_marathon_seconds;
+                const onTarget = hmSec != null && hmSec <= HM_TARGET_SECONDS;
+                const hmTone = hmSec == null ? "neutral" : onTarget ? "good" : "bad";
+                return (
+                  <div className="p-3 rounded col-span-1 sm:col-span-1" style={{
+                    background: onTarget ? "rgba(34,197,94,0.07)" : hmSec ? "rgba(239,68,68,0.07)" : "rgba(255,255,255,0.04)",
+                    border: `1px solid ${hmSec ? toneColor(hmTone) + "55" : "var(--border)"}`,
+                  }}>
+                    <div className="flex items-center justify-between">
+                      <span className="label" style={{ fontSize: "10px" }}>Half Marathon</span>
+                      {hmSec && <StatusDot tone={hmTone} />}
+                    </div>
+                    <div className="mt-1.5 text-lg sm:text-xl font-semibold tracking-tight tabular" style={{ letterSpacing: "-0.02em", color: hmSec ? toneColor(hmTone) : undefined }}>
+                      {hmSec ? formatRaceTime(hmSec) : "—"}
+                    </div>
+                    <div className="mt-0.5 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                      {hmSec ? (onTarget ? `▲ ${formatRaceTime(HM_TARGET_SECONDS - hmSec)} under target` : `▼ ${formatRaceTime(hmSec - HM_TARGET_SECONDS)} over target`) : "target: 2:45"}
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* Marathon */}
+              <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                <div className="label" style={{ fontSize: "10px" }}>Marathon</div>
+                <div className="mt-1.5 text-lg sm:text-xl font-semibold tracking-tight tabular" style={{ letterSpacing: "-0.02em" }}>
+                  {rp.race_marathon_seconds ? formatRaceTime(rp.race_marathon_seconds) : "—"}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── Performance / Fitness Metrics ── */}
+        {fm && (
+          <section className="panel p-4 sm:p-6">
+            <div className="label mb-4">Performance Metrics</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+              {/* VO2 Max */}
+              <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="label" style={{ fontSize: "10px" }}>VO₂ Max</span>
+                  {data?.vo2History && data.vo2History.length > 1 && (
+                    <VO2Sparkline data={data.vo2History} />
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1 tabular">
+                  <span className="text-2xl sm:text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>
+                    {fm.vo2_max_running ? Math.round(fm.vo2_max_running * 10) / 10 : "—"}
+                  </span>
+                  {fm.vo2_max_running && <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>ml/kg/min</span>}
+                </div>
+                {fm.fitness_age && (
+                  <div className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>Fitness age {fm.fitness_age}</div>
+                )}
+              </div>
+
+              {/* Training Status */}
+              {fm.training_status && (
+                <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="label" style={{ fontSize: "10px" }}>Training Status</span>
+                    <StatusDot tone={trainingStatusTone(fm.training_status)} />
+                  </div>
+                  <div className="mt-2 text-base font-semibold" style={{ color: toneColor(trainingStatusTone(fm.training_status)) }}>
+                    {trainingStatusLabel(fm.training_status)}
+                  </div>
+                  {fm.load_ratio != null && (
+                    <div className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                      Load ratio {fm.load_ratio.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Acute / Chronic Load */}
+              {(fm.acute_load != null || fm.chronic_load != null) && (
+                <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                  <div className="flex items-center justify-between">
+                    <span className="label" style={{ fontSize: "10px" }}>Load Ratio</span>
+                    {fm.load_ratio != null && <StatusDot tone={loadRatioTone(fm.load_ratio)} />}
+                  </div>
+                  <div className="mt-2 flex items-baseline gap-1 tabular">
+                    <span className="text-2xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>
+                      {fm.load_ratio ? fm.load_ratio.toFixed(2) : "—"}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    <span>A {fm.acute_load ?? "—"}</span>
+                    <span>C {fm.chronic_load ?? "—"}</span>
+                  </div>
+                  {fm.load_ratio != null && (
+                    <div className="mt-2"><Bar value={fm.load_ratio} max={2} tone={loadRatioTone(fm.load_ratio)} thin /></div>
+                  )}
+                </div>
+              )}
+
+              {/* Hill Score */}
+              {fm.hill_score != null && (
+                <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                  <div className="label" style={{ fontSize: "10px" }}>Hill Score</div>
+                  <div className="mt-2 flex items-baseline gap-1 tabular">
+                    <span className="text-2xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>{Math.round(fm.hill_score)}</span>
+                    <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>/100</span>
+                  </div>
+                  <div className="mt-2"><Bar value={fm.hill_score} max={100} tone="neutral" thin /></div>
+                </div>
+              )}
+
+              {/* Endurance Score */}
+              {fm.endurance_score != null && (
+                <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                  <div className="label" style={{ fontSize: "10px" }}>Endurance Score</div>
+                  <div className="mt-2 flex items-baseline gap-1 tabular">
+                    <span className="text-2xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>{Math.round(fm.endurance_score)}</span>
+                    <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>/100</span>
+                  </div>
+                  <div className="mt-2"><Bar value={fm.endurance_score} max={100} tone="neutral" thin /></div>
+                </div>
+              )}
+
+              {/* Lactate Threshold */}
+              {fm.lactate_threshold_hr != null && (
+                <div className="p-3 rounded" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--border)" }}>
+                  <div className="label" style={{ fontSize: "10px" }}>Lactate Threshold</div>
+                  <div className="mt-2 flex items-baseline gap-1 tabular">
+                    <span className="text-2xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em" }}>{fm.lactate_threshold_hr}</span>
+                    <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>bpm</span>
+                  </div>
+                  {fm.lactate_threshold_pace_min_per_km != null && (
+                    <div className="mt-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                      {formatRaceTime(fm.lactate_threshold_pace_min_per_km * 60)}/km pace
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ── Health Metrics ── */}
         {h && (
           <section className="space-y-3">
-            {/* 4 main metrics — 2 col on mobile, 4 on desktop */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <MetricCard
                 label="Sleep"
@@ -373,7 +735,7 @@ export default function Dashboard() {
                 label="HRV"
                 value={h.hrv_last_night ? String(Math.round(h.hrv_last_night)) : "—"}
                 unit="ms"
-                sub={h.hrv_status ? h.hrv_status : undefined}
+                sub={h.hrv_status ? h.hrv_status : h.hrv_weekly_avg ? `7d avg ${Math.round(h.hrv_weekly_avg)}ms` : undefined}
                 tone={h.hrv_status?.toLowerCase().includes("balanced") ? "good" : "warn"}
               />
               <MetricCard
@@ -394,21 +756,64 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Steps + calories — full-width compact */}
-            {h.steps != null && (
-              <div className="panel px-4 py-1">
+            {/* Secondary health — SpO2, Respiration, etc */}
+            <div className="panel px-4 py-1">
+              {h.steps != null && (
+                <StatRow label="Steps" value={h.steps.toLocaleString("en-US")} sub={h.calories_active ? `${h.calories_active} active kcal` : undefined} />
+              )}
+              {h.hrv_weekly_avg ? (
+                <StatRow label="HRV 7-day avg" value={String(Math.round(h.hrv_weekly_avg))} unit="ms" />
+              ) : null}
+              {h.spo2_avg != null && (
+                <StatRow label="SpO₂" value={`${Math.round(h.spo2_avg)}%`} tone={spo2Tone(h.spo2_avg)} />
+              )}
+              {h.respiration_avg != null && (
+                <StatRow label="Respiration" value={String(Math.round(h.respiration_avg))} unit="brpm" />
+              )}
+              {h.floors_climbed != null && h.floors_climbed > 0 && (
+                <StatRow label="Floors" value={String(h.floors_climbed)} />
+              )}
+              {h.weight_kg != null && (
                 <StatRow
-                  label="Steps"
-                  value={h.steps.toLocaleString("en-US")}
-                  sub={h.calories_active ? `${h.calories_active} active kcal` : undefined}
+                  label="Weight"
+                  value={h.weight_kg.toFixed(1)}
+                  unit="kg"
+                  sub={h.body_fat_pct ? `${h.body_fat_pct.toFixed(1)}% body fat` : undefined}
                 />
-                {h.hrv_weekly_avg ? (
-                  <StatRow
-                    label="HRV 7-day avg"
-                    value={String(Math.round(h.hrv_weekly_avg))}
-                    unit="ms"
-                  />
-                ) : null}
+              )}
+              {h.hydration_ml != null && h.hydration_goal_ml != null && (
+                <StatRow
+                  label="Hydration"
+                  value={`${Math.round(h.hydration_ml / 100) / 10}L`}
+                  sub={`goal ${Math.round(h.hydration_goal_ml / 100) / 10}L`}
+                  tone={h.hydration_ml >= h.hydration_goal_ml * 0.8 ? "good" : "warn"}
+                  last
+                />
+              )}
+            </div>
+
+            {/* Intensity minutes */}
+            {weeklyIntensityTotal > 0 && (
+              <div className="panel p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <span className="label">Intensity Minutes · Weekly</span>
+                  <span className="text-xs tabular flex-shrink-0" style={{ color: "var(--text-tertiary)" }}>goal 150</span>
+                </div>
+                <div className="flex items-baseline gap-2 tabular mb-3">
+                  <span className="text-3xl font-semibold tracking-tight" style={{ letterSpacing: "-0.03em", color: toneColor(weeklyIntensityTotal >= intensityGoal ? "good" : weeklyIntensityTotal >= intensityGoal * 0.5 ? "warn" : "bad") }}>
+                    {weeklyIntensityTotal}
+                  </span>
+                  <span className="text-sm" style={{ color: "var(--text-tertiary)" }}>/ {intensityGoal} min</span>
+                </div>
+                <Bar
+                  value={weeklyIntensityTotal}
+                  max={intensityGoal}
+                  tone={weeklyIntensityTotal >= intensityGoal ? "good" : weeklyIntensityTotal >= intensityGoal * 0.5 ? "warn" : "bad"}
+                />
+                <div className="mt-2 flex items-center gap-4 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                  {weeklyMod > 0 && <span>Moderate {weeklyMod}min</span>}
+                  {weeklyVig > 0 && <span>Vigorous {weeklyVig}min</span>}
+                </div>
               </div>
             )}
           </section>
@@ -423,7 +828,7 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Latest Run */}
+        {/* ── Latest Run ── */}
         {lastRun && (
           <section className="panel p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
@@ -434,6 +839,16 @@ export default function Dashboard() {
             </div>
 
             <div className="text-sm font-medium mb-4 truncate" style={{ color: "var(--text-secondary)" }}>{lastRun.name || "Run"}</div>
+
+            {/* Weather row */}
+            {lastRun.weather_temp_c != null && (
+              <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                <span>{lastRun.weather_temp_c.toFixed(0)}°C{lastRun.weather_apparent_temp_c != null ? ` feels ${lastRun.weather_apparent_temp_c.toFixed(0)}°C` : ""}</span>
+                {lastRun.weather_humidity_pct != null && <span>Humidity {lastRun.weather_humidity_pct}%</span>}
+                {lastRun.weather_wind_kph != null && <span>Wind {lastRun.weather_wind_kph.toFixed(0)} kph</span>}
+                {lastRun.weather_conditions && <span style={{ color: "var(--text-secondary)" }}>{lastRun.weather_conditions}</span>}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               <div>
@@ -474,6 +889,17 @@ export default function Dashboard() {
               </div>
             </div>
 
+            {/* Extra run stats row */}
+            {(lastRun.avg_cadence_spm != null || lastRun.elevation_gain_m != null || lastRun.calories != null) && (
+              <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                {lastRun.avg_cadence_spm != null && <span>Cadence {lastRun.avg_cadence_spm} spm</span>}
+                {lastRun.elevation_gain_m != null && <span>Elev +{lastRun.elevation_gain_m}m</span>}
+                {lastRun.calories != null && <span>{lastRun.calories} kcal</span>}
+                {lastRun.max_hr != null && <span>Max HR {lastRun.max_hr} bpm</span>}
+              </div>
+            )}
+
+            {/* MAF assessment */}
             {lastRun.avg_hr && (
               <div className="mt-4 pt-4 flex items-start gap-2.5" style={{ borderTop: "1px solid var(--border)" }}>
                 <StatusDot tone={hrTone(lastRun.avg_hr)} />
@@ -486,10 +912,16 @@ export default function Dashboard() {
                 </div>
               </div>
             )}
+
+            {/* HR Zones */}
+            <HRZoneBar run={lastRun} />
+
+            {/* Splits */}
+            {lastRun.splits_json && <SplitsTable splitsJson={lastRun.splits_json} />}
           </section>
         )}
 
-        {/* Weekly Volume */}
+        {/* ── Weekly Volume ── */}
         {weeklyData.length > 0 && (
           <section className="panel p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
@@ -500,7 +932,7 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Recovery Trend */}
+        {/* ── Recovery Trend ── */}
         {(data?.healthHistory || []).length > 1 && (
           <section className="panel p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 mb-4">
@@ -511,7 +943,7 @@ export default function Dashboard() {
           </section>
         )}
 
-        {/* Recent Activities */}
+        {/* ── Recent Activities ── */}
         {(data?.activities || []).length > 0 && (
           <section className="panel p-4 sm:p-6">
             <div className="flex items-center justify-between gap-3 mb-3">
@@ -520,15 +952,12 @@ export default function Dashboard() {
                 {data!.activities.length} entries
               </span>
             </div>
-            {/* Column headers — desktop only */}
             <div className="hidden sm:flex items-center gap-4 pb-2 mb-1" style={{ borderBottom: "1px solid var(--border)" }}>
               <div className="flex-1 label">Activity</div>
               <div className="w-24 text-right label">Distance</div>
               <div className="w-16 text-right label">Avg HR</div>
             </div>
-            {/* Mobile: simple divider */}
             <div className="sm:hidden" style={{ borderBottom: "1px solid var(--border)" }} />
-
             {data!.activities.slice(0, 10).map((a, i, arr) => (
               <ActivityRow key={a.activity_id} a={a} last={i === arr.length - 1} />
             ))}
