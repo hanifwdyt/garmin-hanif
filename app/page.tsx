@@ -13,6 +13,8 @@ import {
 } from "@/lib/utils";
 
 const ActivityShareModal = dynamic(() => import("./components/ActivityShareModal"), { ssr: false });
+const AnalyticsDashboard = dynamic(() => import("./components/AnalyticsDashboard"), { ssr: false });
+import type { AnalyticsData } from "./components/AnalyticsDashboard";
 
 interface Activity {
   id: number;
@@ -561,24 +563,34 @@ export default function Dashboard() {
   const [showFontMenu, setShowFontMenu] = useState(false);
   const [sharingActivity, setSharingActivity] = useState<Activity | null>(null);
   const [fontKey, setFontKey] = useState<FontKey>('inter');
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const activeFontOption = FONT_OPTIONS.find(f => f.key === fontKey)!;
   const fontMenuRef = useRef<HTMLDivElement | null>(null);
 
   const loadData = useCallback(async (silent = false) => {
     try {
       if (!silent) setRefreshing(true);
-      const r = await fetch("/api/data", { cache: "no-store" });
+      const [r, ra] = await Promise.all([
+        fetch("/api/data", { cache: "no-store" }),
+        fetch("/api/analytics", { cache: "no-store" }),
+      ]);
       if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
       const d = await r.json();
       setData(d);
       setLastFetchedAt(new Date());
       setError(null);
+      if (ra.ok) {
+        const ad = await ra.json();
+        setAnalyticsData(ad);
+      }
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
       setError(msg);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setAnalyticsLoading(false);
     }
   }, []);
 
@@ -1239,6 +1251,9 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+
+        {/* ── Analytics Dashboard (intervals.icu-style) ── */}
+        <AnalyticsDashboard data={analyticsData} loading={analyticsLoading} />
 
         <footer className="pt-4 flex items-center justify-between text-xs" style={{ color: "var(--text-tertiary)", borderTop: "1px solid var(--border)" }}>
           <span>On-demand sync via Telegram</span>
